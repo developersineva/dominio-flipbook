@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>DOMINIO — FLC x Berdez x Sineva</title>
+<style>
+  :root { --bg:#1a1a1d; --accent:#c9a44c; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #eee; overflow: hidden;
+  }
+  #stage {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px 24px 84px;
+  }
+  #book { touch-action: pan-y; }
+  .page {
+    background: #fff; box-shadow: 0 0 20px rgba(0,0,0,.5);
+    overflow: hidden;
+  }
+  .page img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .page-hard { background: #2b2b30; }
+
+  /* Toolbar */
+  #bar {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(20,20,22,.82); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.08);
+    padding: 10px 16px; border-radius: 40px; z-index: 20;
+    user-select: none;
+  }
+  #bar button {
+    background: none; border: none; color: #eee; font-size: 20px;
+    cursor: pointer; width: 38px; height: 38px; border-radius: 50%;
+    display: grid; place-items: center; transition: background .15s;
+  }
+  #bar button:hover { background: rgba(255,255,255,.12); }
+  #bar button:disabled { opacity: .3; cursor: default; }
+  #pageInfo { font-size: 13px; min-width: 78px; text-align: center; letter-spacing: .5px; }
+  #fsBtn { font-size: 17px; }
+  .sep { width: 1px; height: 22px; background: rgba(255,255,255,.15); }
+
+  #hint {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: #aaa; background: rgba(20,20,22,.7);
+    padding: 6px 14px; border-radius: 20px; z-index: 20;
+    transition: opacity .6s; pointer-events: none;
+  }
+  #loader {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    background: var(--bg); z-index: 50; color: var(--accent); letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+  <div id="loader">CARGANDO…</div>
+  <div id="hint">Arrastra o desliza para pasar las páginas</div>
+  <div id="stage"><div id="book"></div></div>
+
+  <div id="bar">
+    <button id="first" title="Inicio">⏮</button>
+    <button id="prev" title="Anterior">‹</button>
+    <span id="pageInfo">— / —</span>
+    <button id="next" title="Siguiente">›</button>
+    <button id="last" title="Final">⏭</button>
+    <span class="sep"></span>
+    <button id="fsBtn" title="Pantalla completa">⛶</button>
+  </div>
+
+  <script src="lib/page-flip.browser.js"></script>
+  <script>
+    const TOTAL = 36;
+    const PAGE_W = 1224, PAGE_H = 1584;           // source image dimensions
+    const ASPECT = PAGE_H / PAGE_W;
+
+    const bookEl = document.getElementById('book');
+
+    function makePages() {
+      let html = '';
+      for (let i = 1; i <= TOTAL; i++) {
+        const n = String(i).padStart(2, '0');
+        // Cover and back as "hard" pages for a magazine-cover feel
+        const hard = (i === 1 || i === TOTAL) ? ' page-hard' : '';
+        html += `<div class="page${hard}" data-density="${(i===1||i===TOTAL)?'hard':'soft'}">
+                   <img src="pages/page-${n}.jpg" alt="Página ${i}" loading="${i<=4?'eager':'lazy'}">
+                 </div>`;
+      }
+      bookEl.innerHTML = html;
+    }
+
+    function calcSize() {
+      const stage = document.getElementById('stage');
+      const availW = stage.clientWidth;
+      const availH = stage.clientHeight;
+      // Two pages side by side in landscape; fit to available area.
+      let h = availH;
+      let singleW = h / ASPECT;
+      if (singleW * 2 > availW) {        // width-constrained
+        singleW = availW / 2;
+        h = singleW * ASPECT;
+      }
+      return { w: Math.floor(singleW), h: Math.floor(h) };
+    }
+
+    let pageFlip;
+    function initFlip() {
+      const { w, h } = calcSize();
+      pageFlip = new St.PageFlip(bookEl, {
+        width: w, height: h,
+        size: 'fixed',
+        minWidth: 200, maxWidth: 2000,
+        minHeight: 300, maxHeight: 2600,
+        maxShadowOpacity: 0.5,
+        showCover: true,
+        usePortrait: true,           // auto single-page on narrow screens (mobile)
+        mobileScrollSupport: false,
+        flippingTime: 700,
+        drawShadow: true,
+      });
+      pageFlip.loadFromHTML(document.querySelectorAll('#book .page'));
+
+      pageFlip.on('flip', e => updateInfo(e.data));
+      pageFlip.on('changeState', e => {
+        if (e.data === 'user_fold' || e.data === 'flipping') hideHint();
+      });
+      updateInfo(pageFlip.getCurrentPageIndex());
+    }
+
+    const info = document.getElementById('pageInfo');
+    function updateInfo(idx) {
+      info.textContent = `${idx + 1} / ${TOTAL}`;
+      document.getElementById('prev').disabled  = idx <= 0;
+      document.getElementById('first').disabled = idx <= 0;
+      document.getElementById('next').disabled  = idx >= TOTAL - 1;
+      document.getElementById('last').disabled  = idx >= TOTAL - 1;
+    }
+
+    let hintTimer;
+    function hideHint() {
+      const h = document.getElementById('hint');
+      h.style.opacity = '0';
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(() => h.remove(), 700);
+    }
+
+    // Controls
+    document.getElementById('prev').onclick  = () => pageFlip.flipPrev();
+    document.getElementById('next').onclick  = () => pageFlip.flipNext();
+    document.getElementById('first').onclick = () => pageFlip.flip(0);
+    document.getElementById('last').onclick  = () => pageFlip.flip(TOTAL - 1);
+
+    // Keyboard
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft')  pageFlip.flipPrev();
+      if (e.key === 'ArrowRight') pageFlip.flipNext();
+    });
+
+    // Fullscreen
+    document.getElementById('fsBtn').onclick = () => {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    };
+
+    // Responsive re-layout
+    let rT;
+    window.addEventListener('resize', () => {
+      clearTimeout(rT);
+      rT = setTimeout(() => {
+        const cur = pageFlip.getCurrentPageIndex();
+        pageFlip.destroy();
+        initFlip();
+        pageFlip.flip(cur);
+      }, 250);
+    });
+
+    // Boot
+    makePages();
+    const first = new Image();
+    first.onload = () => {
+      initFlip();
+      document.getElementById('loader').style.display = 'none';
+      setTimeout(hideHint, 4000);
+    };
+    first.onerror = () => { document.getElementById('loader').textContent = 'Error al cargar'; };
+    first.src = 'pages/page-01.jpg';
+  </script>
+</body>
+</html>
