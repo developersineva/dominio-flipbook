@@ -7,85 +7,97 @@
 <style>
   :root{
     --gold:#c9a44c;
-    --green-deep:#0c1712;
-    --green:#16271d;
+    --gold-soft:#e7cd8e;
+    --green-deep:#0a140f;
+    --green:#15261c;
   }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body{
     margin:0; height:100%; overflow:hidden;
     font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
-    color:#eee;
-    /* Aesthetic luxury background matching the DOMINIO cover */
-    background:
-      radial-gradient(120% 80% at 50% 18%, rgba(201,164,76,.16), rgba(201,164,76,0) 55%),
-      radial-gradient(140% 120% at 50% 120%, #1d3326 0%, var(--green) 30%, var(--green-deep) 70%, #060b08 100%);
-  }
-  /* film-grain + vignette overlay */
-  body::before{
-    content:""; position:fixed; inset:0; pointer-events:none; z-index:1;
-    background:
-      radial-gradient(130% 100% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%);
-    mix-blend-mode:multiply;
-  }
-  body::after{
-    content:""; position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.05;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    color:#eee; background:var(--green-deep);
   }
 
-  #stage{
-    position:fixed; inset:0; z-index:2;
-    display:flex; align-items:center; justify-content:center;
+  /* ---- layered luxury background ---- */
+  .bg{ position:fixed; inset:0; z-index:0; overflow:hidden; }
+  .bg-base{
+    position:absolute; inset:0;
+    background:
+      radial-gradient(140% 120% at 50% 122%, #21402e 0%, var(--green) 34%, var(--green-deep) 72%, #050a07 100%);
   }
-  #bookWrap{ position:relative; filter:drop-shadow(0 26px 50px rgba(0,0,0,.6)); }
+  .glow{ position:absolute; border-radius:50%; filter:blur(60px); opacity:.5; will-change:transform; }
+  .glow.g1{ width:60vmax; height:60vmax; left:50%; top:-22vmax; margin-left:-30vmax;
+    background:radial-gradient(closest-side, rgba(201,164,76,.5), rgba(201,164,76,0) 70%);
+    animation:drift1 26s ease-in-out infinite; }
+  .glow.g2{ width:42vmax; height:42vmax; left:-10vmax; bottom:-14vmax;
+    background:radial-gradient(closest-side, rgba(91,150,110,.35), rgba(91,150,110,0) 70%);
+    animation:drift2 32s ease-in-out infinite; }
+  .glow.g3{ width:40vmax; height:40vmax; right:-12vmax; top:30%;
+    background:radial-gradient(closest-side, rgba(201,164,76,.22), rgba(201,164,76,0) 70%);
+    animation:drift3 38s ease-in-out infinite; }
+  @keyframes drift1{ 0%,100%{transform:translate(-4%, 0) scale(1)} 50%{transform:translate(5%, 4%) scale(1.08)} }
+  @keyframes drift2{ 0%,100%{transform:translate(0,0)} 50%{transform:translate(8%,-6%)} }
+  @keyframes drift3{ 0%,100%{transform:translate(0,0)} 50%{transform:translate(-7%,5%)} }
+  .vignette{ position:absolute; inset:0;
+    background:radial-gradient(130% 100% at 50% 48%, rgba(0,0,0,0) 52%, rgba(0,0,0,.6) 100%); }
+  .grain{ position:absolute; inset:0; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"); }
+
+  /* ---- book ---- */
+  #stage{ position:fixed; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; }
+  #bookWrap{ position:relative; filter:drop-shadow(0 30px 55px rgba(0,0,0,.6)); }
   #book{ touch-action:pan-y; }
   .page{ background:#fff; overflow:hidden; }
   .page img{ width:100%; height:100%; display:block; object-fit:cover; }
 
-  /* subtle tap hints, fade out */
+  /* ---- tap zones (above the page, so they own the tap) ---- */
   .tapzone{
-    position:fixed; top:0; bottom:0; width:30%; z-index:3;
-    display:flex; align-items:center; pointer-events:none;
-    opacity:0; transition:opacity .4s;
+    position:fixed; top:0; bottom:0; width:30%; z-index:4;
+    display:flex; align-items:center; cursor:pointer; user-select:none;
   }
-  #tzLeft{ left:0; justify-content:flex-start; padding-left:14px; }
-  #tzRight{ right:0; justify-content:flex-end; padding-right:14px; }
-  .tapzone.show{ opacity:.0; }
+  #tzLeft{ left:0; justify-content:flex-start; padding-left:12px; }
+  #tzRight{ right:0; justify-content:flex-end; padding-right:12px; }
   .arrow{
-    font-size:30px; color:var(--gold);
-    width:54px; height:54px; border-radius:50%;
-    background:rgba(0,0,0,.35); border:1px solid rgba(201,164,76,.35);
-    display:grid; place-items:center;
+    width:50px; height:50px; border-radius:50%;
+    display:grid; place-items:center; font-size:26px; color:var(--gold-soft);
+    background:rgba(10,20,15,.4); border:1px solid rgba(201,164,76,.35);
+    backdrop-filter:blur(4px);
+    opacity:.0; transition:opacity .35s; pointer-events:none;
   }
+  .tapzone.peek .arrow{ opacity:.85; }   /* brief reveal on load */
 
   #hint{
     position:fixed; top:calc(env(safe-area-inset-top,0) + 16px); left:50%;
-    transform:translateX(-50%); z-index:5;
-    font-size:13px; letter-spacing:.4px; color:#d8d2c4;
-    background:rgba(12,23,18,.7); border:1px solid rgba(201,164,76,.25);
-    padding:8px 16px; border-radius:30px;
-    transition:opacity .7s; pointer-events:none; text-align:center;
+    transform:translateX(-50%); z-index:6;
+    font-size:13px; letter-spacing:.4px; color:#e4dcc8;
+    background:rgba(10,20,15,.72); border:1px solid rgba(201,164,76,.3);
+    padding:8px 16px; border-radius:30px; transition:opacity .7s;
+    pointer-events:none; text-align:center; max-width:86vw;
   }
-
-  /* tiny page counter, lower-center, auto-fades */
   #counter{
     position:fixed; bottom:calc(env(safe-area-inset-bottom,0) + 14px); left:50%;
-    transform:translateX(-50%); z-index:5;
+    transform:translateX(-50%); z-index:6;
     font-size:12px; letter-spacing:2px; color:var(--gold);
-    background:rgba(12,23,18,.55); padding:5px 14px; border-radius:20px;
+    background:rgba(10,20,15,.55); padding:5px 14px; border-radius:20px;
     transition:opacity .6s; pointer-events:none;
   }
   #counter.dim{ opacity:0; }
-
   #loader{
     position:fixed; inset:0; z-index:50; display:grid; place-items:center;
-    color:var(--gold); letter-spacing:6px; font-size:14px;
-    background:var(--green-deep);
+    color:var(--gold); letter-spacing:7px; font-size:14px; background:var(--green-deep);
   }
   #loader span{ animation:pulse 1.4s ease-in-out infinite; }
   @keyframes pulse{ 0%,100%{opacity:.35} 50%{opacity:1} }
 </style>
 </head>
 <body>
+  <div class="bg">
+    <div class="bg-base"></div>
+    <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+    <div class="grain"></div>
+    <div class="vignette"></div>
+  </div>
+
   <div id="loader"><span>D O M I N I O</span></div>
   <div id="hint">Toca a la derecha para avanzar · a la izquierda para retroceder</div>
 
@@ -99,148 +111,138 @@
   <script>
     const TOTAL = 36;
     const SRC_W = 1224, SRC_H = 1584;
-    const ASPECT = SRC_H / SRC_W;            // height / width
+    const ASPECT = SRC_H / SRC_W;
 
     const bookEl  = document.getElementById('book');
     const wrapEl  = document.getElementById('bookWrap');
     const counter = document.getElementById('counter');
 
-    /* ---------- build pages ---------- */
     function makePages(){
-      let html = '';
+      let html='';
       for(let i=1;i<=TOTAL;i++){
-        const n = String(i).padStart(2,'0');
+        const n=String(i).padStart(2,'0');
         html += `<div class="page"><img src="pages/page-${n}.jpg" alt="Página ${i}" loading="lazy"></div>`;
       }
-      bookEl.innerHTML = html;
+      bookEl.innerHTML=html;
     }
 
-    /* ---------- size: one big page filling the screen ---------- */
     function calcSize(){
-      const mW = window.innerWidth  * 0.96;
-      const mH = window.innerHeight * 0.94;
-      let h = mH, w = h / ASPECT;
-      if(w > mW){ w = mW; h = w * ASPECT; }
-      return { w:Math.floor(w), h:Math.floor(h) };
+      const mW=window.innerWidth*0.96, mH=window.innerHeight*0.94;
+      let h=mH, w=h/ASPECT;
+      if(w>mW){ w=mW; h=w*ASPECT; }
+      return {w:Math.floor(w),h:Math.floor(h)};
     }
 
-    /* ---------- page-flip sound (synthesized, no asset) ---------- */
-    let actx = null;
+    /* ---------- realistic page-turn sound (synth, no asset) ---------- */
+    let actx=null;
     function ensureAudio(){
-      if(!actx){
-        try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
-      }
-      if(actx && actx.state === 'suspended') actx.resume();
+      if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+      if(actx && actx.state==='suspended') actx.resume();
+    }
+    function noiseBurst(master,start,dur,f0,f1,vol,q){
+      const buf=actx.createBuffer(1,Math.max(1,Math.ceil(actx.sampleRate*dur)),actx.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+      const src=actx.createBufferSource(); src.buffer=buf;
+      const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=q;
+      bp.frequency.setValueAtTime(f0,start);
+      bp.frequency.exponentialRampToValueAtTime(f1,start+dur);
+      const g=actx.createGain();
+      g.gain.setValueAtTime(0.0001,start);
+      g.gain.exponentialRampToValueAtTime(vol,start+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001,start+dur);
+      src.connect(bp).connect(g).connect(master);
+      src.start(start); src.stop(start+dur+0.02);
     }
     function playFlip(){
       if(!actx) return;
-      const t = actx.currentTime;
-      const dur = 0.22;
-      // white-noise burst
-      const buf = actx.createBuffer(1, actx.sampleRate*dur, actx.sampleRate);
-      const d = buf.getChannelData(0);
-      for(let i=0;i<d.length;i++){ d[i] = (Math.random()*2-1) * (1 - i/d.length); }
-      const src = actx.createBufferSource(); src.buffer = buf;
-      const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=0.7;
-      bp.frequency.setValueAtTime(1400, t);
-      bp.frequency.exponentialRampToValueAtTime(3600, t+dur);
-      const g = actx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.22, t+0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-      src.connect(bp).connect(g).connect(actx.destination);
-      src.start(t); src.stop(t+dur);
+      const t=actx.currentTime;
+      const master=actx.createGain(); master.gain.value=0.85; master.connect(actx.destination);
+      // paper sliding — two overlapping swishes
+      noiseBurst(master, t,      0.15, 1900, 850, 0.17, 0.8);
+      noiseBurst(master, t+0.05, 0.19, 2700,1150, 0.13, 0.7);
+      // soft settle thud
+      const o=actx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(150,t+0.13);
+      o.frequency.exponentialRampToValueAtTime(90,t+0.27);
+      const og=actx.createGain();
+      og.gain.setValueAtTime(0.0001,t+0.13);
+      og.gain.exponentialRampToValueAtTime(0.07,t+0.15);
+      og.gain.exponentialRampToValueAtTime(0.0001,t+0.28);
+      o.connect(og).connect(master); o.start(t+0.13); o.stop(t+0.3);
     }
 
-    /* ---------- preload neighbours for smoothness ---------- */
     function preload(idx){
       for(let k=idx-1;k<=idx+2;k++){
-        if(k>=0 && k<TOTAL){
-          const n=String(k+1).padStart(2,'0');
-          const im=new Image(); im.src=`pages/page-${n}.jpg`;
-        }
+        if(k>=0&&k<TOTAL){ const n=String(k+1).padStart(2,'0'); const im=new Image(); im.src=`pages/page-${n}.jpg`; }
       }
     }
 
-    /* ---------- init flipbook ---------- */
+    /* ---------- flipbook ---------- */
     let pf;
     function buildFlip(startIndex){
-      const {w,h} = calcSize();
-      wrapEl.style.width = w+'px';
-      wrapEl.style.height = h+'px';
-      pf = new St.PageFlip(bookEl, {
-        width:w, height:h, size:'fixed',
-        usePortrait:true,            // single page
-        showCover:true,
-        drawShadow:true,
-        maxShadowOpacity:0.28,       // lighter = smoother
-        flippingTime:560,
-        swipeDistance:24,
-        disableFlipByClick:true,     // we drive nav with our own tap zones
-        mobileScrollSupport:false,
-        useMouseEvents:true,
+      const {w,h}=calcSize();
+      wrapEl.style.width=w+'px'; wrapEl.style.height=h+'px';
+      pf=new St.PageFlip(bookEl,{
+        width:w,height:h,size:'fixed',
+        usePortrait:true, showCover:true,
+        drawShadow:true, maxShadowOpacity:0.3,
+        flippingTime:600, swipeDistance:22,
+        disableFlipByClick:false,   // allow real flips both ways; tap-zones sit on top
+        mobileScrollSupport:false, useMouseEvents:true,
       });
       pf.loadFromHTML(document.querySelectorAll('#book .page'));
       if(startIndex) pf.turnToPage(startIndex);
-
       pf.on('flip', e=>{ updateCounter(e.data); preload(e.data); });
       pf.on('changeState', e=>{ if(e.data==='flipping') playFlip(); });
-      updateCounter(pf.getCurrentPageIndex());
-      preload(pf.getCurrentPageIndex());
+      updateCounter(pf.getCurrentPageIndex()); preload(pf.getCurrentPageIndex());
     }
 
-    /* ---------- counter (auto fade) ---------- */
     let dimTimer;
     function updateCounter(idx){
-      counter.textContent = (idx+1) + ' / ' + TOTAL;
+      counter.textContent=(idx+1)+' / '+TOTAL;
       counter.classList.remove('dim');
-      clearTimeout(dimTimer);
-      dimTimer = setTimeout(()=>counter.classList.add('dim'), 1800);
+      clearTimeout(dimTimer); dimTimer=setTimeout(()=>counter.classList.add('dim'),1800);
     }
 
-    /* ---------- tap-zone navigation ---------- */
-    let downX=0, downY=0, downT=0;
-    document.addEventListener('pointerdown', e=>{
-      ensureAudio();
-      downX=e.clientX; downY=e.clientY; downT=e.timeStamp;
-    }, {passive:true});
-    document.addEventListener('pointerup', e=>{
-      const moved = Math.hypot(e.clientX-downX, e.clientY-downY);
-      const quick = (e.timeStamp-downT) < 350;
-      if(moved < 12 && quick){          // it's a tap, not a drag
-        if(e.clientX > window.innerWidth/2) pf.flipNext('top');
-        else pf.flipPrev('top');
-      }
-    }, {passive:true});
+    /* ---------- tap-zone navigation (own handlers, no double-flip) ---------- */
+    function goNext(){ ensureAudio(); if(pf) pf.flipNext('top'); }
+    function goPrev(){ ensureAudio(); if(pf) pf.flipPrev('top'); }
 
-    // keyboard for desktop
-    addEventListener('keydown', e=>{
-      if(e.key==='ArrowRight') pf.flipNext('top');
-      if(e.key==='ArrowLeft')  pf.flipPrev('top');
-    });
+    function bindZone(el, fn){
+      let sx=0, sy=0, st=0, moved=false;
+      el.addEventListener('pointerdown', e=>{ ensureAudio(); sx=e.clientX; sy=e.clientY; st=e.timeStamp; moved=false; });
+      el.addEventListener('pointermove', e=>{ if(Math.hypot(e.clientX-sx,e.clientY-sy)>14) moved=true; });
+      el.addEventListener('pointerup',   e=>{
+        const horiz = e.clientX - sx;
+        if(!moved && (e.timeStamp-st)<400){ fn(); }                 // clean tap
+        else if(Math.abs(horiz)>30){ horiz>0 ? goPrev() : goNext(); } // swipe inside zone
+      });
+    }
+    bindZone(document.getElementById('tzLeft'),  goPrev);
+    bindZone(document.getElementById('tzRight'), goNext);
 
-    /* ---------- responsive (debounced, only on real change) ---------- */
-    let lastW=innerWidth, lastH=innerHeight, rT;
+    addEventListener('keydown', e=>{ if(e.key==='ArrowRight') goNext(); if(e.key==='ArrowLeft') goPrev(); });
+
+    /* ---------- responsive ---------- */
+    let lastW=innerWidth,lastH=innerHeight,rT;
     addEventListener('resize', ()=>{
-      if(Math.abs(innerWidth-lastW)<40 && Math.abs(innerHeight-lastH)<40) return;
+      if(Math.abs(innerWidth-lastW)<40&&Math.abs(innerHeight-lastH)<40) return;
       lastW=innerWidth; lastH=innerHeight;
-      clearTimeout(rT);
-      rT=setTimeout(()=>{
-        const cur = pf.getCurrentPageIndex();
-        pf.destroy();
-        buildFlip(cur);
-      }, 220);
+      clearTimeout(rT); rT=setTimeout(()=>{ const c=pf.getCurrentPageIndex(); pf.destroy(); buildFlip(c); },220);
     });
 
     /* ---------- boot ---------- */
     makePages();
-    const cover = new Image();
-    cover.onload = ()=>{
+    const cover=new Image();
+    cover.onload=()=>{
       buildFlip(0);
       document.getElementById('loader').style.display='none';
-      setTimeout(()=>{ const h=document.getElementById('hint'); h.style.opacity='0'; setTimeout(()=>h.remove(),800); }, 4200);
+      // briefly reveal the tap arrows so users know where to tap
+      document.querySelectorAll('.tapzone').forEach(z=>z.classList.add('peek'));
+      setTimeout(()=>document.querySelectorAll('.tapzone').forEach(z=>z.classList.remove('peek')),2600);
+      setTimeout(()=>{ const h=document.getElementById('hint'); h.style.opacity='0'; setTimeout(()=>h.remove(),800); },4500);
     };
-    cover.onerror = ()=>{ document.getElementById('loader').innerHTML='<span>Error al cargar</span>'; };
+    cover.onerror=()=>{ document.getElementById('loader').innerHTML='<span>Error al cargar</span>'; };
     cover.src='pages/page-01.jpg';
   </script>
 </body>
