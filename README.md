@@ -27,6 +27,7 @@ blocks the page images in most browsers.)
 | `index.html` | The flipbook UI and logic |
 | `pages/` | 36 rendered magazine pages (JPEG) |
 | `lib/page-flip.browser.js` | [StPageFlip](https://github.com/Nodlik/StPageFlip) — the page-turn engine (bundled, no CDN needed) |
+| `sound/page-flip.mp3` | Page-turn sound effect — "Turned Page" from [BigSoundBank](https://bigsoundbank.com/turned-page-s0164.html), **CC0 / public domain** (free for commercial use, no attribution required) |
 
 ## How it works
 
