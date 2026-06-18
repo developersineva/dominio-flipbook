@@ -43,12 +43,33 @@
     opacity:0; transition:opacity .35s; pointer-events:none; }
   .tapzone.peek .arrow{ opacity:.85; }
 
-  /* ---- zoom button ---- */
-  #zoomBtn{ position:fixed; right:14px; bottom:calc(env(safe-area-inset-bottom,0) + 12px); z-index:7;
-    width:48px; height:48px; border-radius:50%; border:1px solid rgba(201,164,76,.4);
-    background:rgba(8,17,12,.62); color:var(--gold-soft); font-size:20px; cursor:pointer;
-    display:grid; place-items:center; backdrop-filter:blur(6px); }
-  #zoomBtn:active{ transform:scale(.94); }
+  /* ---- toolbar buttons ---- */
+  .toolbar-btn{ position:fixed; z-index:7; width:44px; height:44px; border-radius:50%;
+    border:1px solid rgba(201,164,76,.4); background:rgba(8,17,12,.62); color:var(--gold-soft);
+    font-size:18px; cursor:pointer; display:grid; place-items:center; backdrop-filter:blur(6px); }
+  .toolbar-btn:active{ transform:scale(.94); }
+  #zoomBtn{ right:14px; bottom:calc(env(safe-area-inset-bottom,0) + 12px); }
+  #fullscreenBtn{ right:14px; bottom:calc(env(safe-area-inset-bottom,0) + 64px); font-size:16px; }
+
+  /* ---- page counter (tappable for jump) ---- */
+  #counter{ position:fixed; bottom:calc(env(safe-area-inset-bottom,0) + 14px); left:50%; transform:translateX(-50%); z-index:6;
+    font-size:12px; letter-spacing:2px; color:var(--gold); background:rgba(8,17,12,.55); padding:5px 14px; border-radius:20px;
+    transition:opacity .6s; cursor:pointer; user-select:none; }
+  #counter.dim{ opacity:.35; }
+  #counter:hover{ opacity:1 !important; }
+
+  /* ---- page jump modal ---- */
+  #jumpModal{ position:fixed; inset:0; z-index:45; display:none; place-items:center; background:rgba(5,10,7,.92); }
+  #jumpModal.open{ display:grid; }
+  #jumpInner{ text-align:center; padding:24px; }
+  #jumpInner h3{ margin:0 0 16px; font-size:16px; letter-spacing:1px; color:var(--gold-soft); font-weight:400; }
+  #jumpGrid{ display:grid; grid-template-columns:repeat(6, 44px); gap:8px; justify-content:center; }
+  .jump-page{ width:44px; height:44px; border-radius:8px; border:1px solid rgba(201,164,76,.3);
+    background:rgba(19,36,26,.8); color:#e4dcc8; font-size:14px; cursor:pointer; display:grid; place-items:center;
+    transition:background .2s, border-color .2s; }
+  .jump-page:hover, .jump-page.active{ background:rgba(201,164,76,.25); border-color:var(--gold); color:#fff; }
+  #jumpClose{ margin-top:20px; padding:8px 24px; border-radius:20px; border:1px solid rgba(201,164,76,.3);
+    background:rgba(8,17,12,.7); color:var(--gold-soft); font-size:13px; cursor:pointer; }
 
   /* ---- zoom overlay ---- */
   #zoom{ position:fixed; inset:0; z-index:40; display:none; place-items:center; overflow:hidden;
@@ -65,11 +86,7 @@
 
   #hint{ position:fixed; top:calc(env(safe-area-inset-top,0) + 16px); left:50%; transform:translateX(-50%); z-index:6;
     font-size:13px; letter-spacing:.3px; color:#e4dcc8; background:rgba(8,17,12,.72); border:1px solid rgba(201,164,76,.3);
-    padding:8px 16px; border-radius:30px; transition:opacity .7s; pointer-events:none; text-align:center; max-width:88vw; }
-  #counter{ position:fixed; bottom:calc(env(safe-area-inset-bottom,0) + 14px); left:50%; transform:translateX(-50%); z-index:6;
-    font-size:12px; letter-spacing:2px; color:var(--gold); background:rgba(8,17,12,.55); padding:5px 14px; border-radius:20px;
-    transition:opacity .6s; pointer-events:none; }
-  #counter.dim{ opacity:0; }
+    padding:8px 16px; border-radius:30px; transition:opacity .7s; cursor:pointer; text-align:center; max-width:88vw; }
   #loader{ position:fixed; inset:0; z-index:50; display:grid; place-items:center; color:var(--gold); letter-spacing:7px; font-size:14px; background:var(--green-deep); }
   #loader span{ animation:pulse 1.4s ease-in-out infinite; }
   @keyframes pulse{ 0%,100%{opacity:.35} 50%{opacity:1} }
@@ -90,7 +107,17 @@
   <div class="tapzone" id="tzLeft"><div class="arrow">‹</div></div>
   <div class="tapzone" id="tzRight"><div class="arrow">›</div></div>
   <div id="counter">1 / 36</div>
-  <button id="zoomBtn" title="Acercar para leer">🔍</button>
+  <button class="toolbar-btn" id="zoomBtn" title="Acercar para leer">🔍</button>
+  <button class="toolbar-btn" id="fullscreenBtn" title="Pantalla completa">⛶</button>
+
+  <!-- page jump modal -->
+  <div id="jumpModal">
+    <div id="jumpInner">
+      <h3>Ir a página</h3>
+      <div id="jumpGrid"></div>
+      <button id="jumpClose">Cerrar</button>
+    </div>
+  </div>
 
   <!-- zoom reader -->
   <div id="zoom">
@@ -101,56 +128,78 @@
 
   <script src="lib/page-flip.browser.js"></script>
   <script>
-    const TOTAL = 36;
-    const ASPECT = 1980 / 1530;   // height / width
+    /* ========== CONFIG ========== */
+    const CFG = {
+      total: 36,
+      aspect: 1980 / 1530,
+      flipTime: 600,
+      swipeDist: 22,
+      audioVol: 0.85,
+      audioPoolSize: 4,
+      maxZoom: 6,
+      minZoom: 1,
+    };
 
     const bookEl  = document.getElementById('book');
     const wrapEl  = document.getElementById('bookWrap');
     const counter = document.getElementById('counter');
     const stage   = document.getElementById('stage');
 
+    /* ========== RESPONSIVE SIZING (mobile-first) ========== */
+    function isMobile(){ return window.innerWidth <= 768; }
+    function calcSize(){
+      const mobile = isMobile();
+      const mW = window.innerWidth  * (mobile ? 0.98 : 0.82);
+      const mH = window.innerHeight * (mobile ? 0.97 : 0.90);
+      let h=mH, w=h/CFG.aspect;
+      if(w>mW){ w=mW; h=w*CFG.aspect; }
+      return {w:Math.floor(w),h:Math.floor(h)};
+    }
+
+    /* ========== PAGES ========== */
     function makePages(){
       let html='';
-      for(let i=1;i<=TOTAL;i++){
+      for(let i=1;i<=CFG.total;i++){
         const n=String(i).padStart(2,'0');
         html += `<div class="page"><img src="pages/page-${n}.jpg" alt="Página ${i}" loading="lazy"></div>`;
       }
       bookEl.innerHTML=html;
     }
-    function calcSize(){
-      const mW=window.innerWidth*0.82, mH=window.innerHeight*0.90;
-      let h=mH, w=h/ASPECT;
-      if(w>mW){ w=mW; h=w*ASPECT; }
-      return {w:Math.floor(w),h:Math.floor(h)};
-    }
+    function preload(idx){ for(let k=idx-1;k<=idx+2;k++){ if(k>=0&&k<CFG.total){ const n=String(k+1).padStart(2,'0'); new Image().src=`pages/page-${n}.jpg`; } } }
 
-    /* ---------- real page-flip sound ---------- */
+    /* ========== AUDIO ========== */
     const POOL=[]; let unlocked=false, pi=0;
-    function buildPool(){ for(let i=0;i<4;i++){ const a=new Audio('sound/page-flip.mp3'); a.preload='auto'; a.volume=0.85; POOL.push(a); } }
+    function buildPool(){ for(let i=0;i<CFG.audioPoolSize;i++){ const a=new Audio('sound/page-flip.mp3'); a.preload='auto'; a.volume=CFG.audioVol; POOL.push(a); } }
     function unlockAudio(){ if(unlocked) return; unlocked=true;
       POOL.forEach(a=>{ a.muted=true; const p=a.play(); if(p&&p.then) p.then(()=>{a.pause();a.currentTime=0;a.muted=false;}).catch(()=>{a.muted=false;}); }); }
     function playFlip(){ if(!POOL.length) return; const a=POOL[pi=(pi+1)%POOL.length]; try{ a.currentTime=0; const p=a.play(); if(p&&p.catch) p.catch(()=>{}); }catch(e){} }
 
-    function preload(idx){ for(let k=idx-1;k<=idx+2;k++){ if(k>=0&&k<TOTAL){ const n=String(k+1).padStart(2,'0'); new Image().src=`pages/page-${n}.jpg`; } } }
-
-    /* ---------- flipbook ---------- */
+    /* ========== FLIPBOOK ========== */
     let pf;
     function buildFlip(startIndex){
       const {w,h}=calcSize(); wrapEl.style.width=w+'px'; wrapEl.style.height=h+'px';
       pf=new St.PageFlip(bookEl,{ width:w,height:h,size:'fixed', usePortrait:true, showCover:true,
-        drawShadow:true, maxShadowOpacity:0.3, flippingTime:600, swipeDistance:22,
+        drawShadow:true, maxShadowOpacity:0.3, flippingTime:CFG.flipTime, swipeDistance:CFG.swipeDist,
         disableFlipByClick:false, mobileScrollSupport:false, useMouseEvents:true });
       pf.loadFromHTML(document.querySelectorAll('#book .page'));
       if(startIndex) pf.turnToPage(startIndex);
-      pf.on('flip', e=>{ updateCounter(e.data); preload(e.data); });
+      pf.on('flip', e=>{ updateCounter(e.data); preload(e.data); updateHash(e.data); });
       pf.on('changeState', e=>{ if(e.data==='flipping') playFlip(); });
       updateCounter(pf.getCurrentPageIndex()); preload(pf.getCurrentPageIndex());
     }
     let dimTimer;
-    function updateCounter(idx){ counter.textContent=(idx+1)+' / '+TOTAL; counter.classList.remove('dim');
-      clearTimeout(dimTimer); dimTimer=setTimeout(()=>counter.classList.add('dim'),1800); }
+    function updateCounter(idx){ counter.textContent=(idx+1)+' / '+CFG.total; counter.classList.remove('dim');
+      clearTimeout(dimTimer); dimTimer=setTimeout(()=>counter.classList.add('dim'),2500); }
 
-    /* ---------- tap-zone navigation ---------- */
+    /* ========== DEEP-LINK (hash) ========== */
+    function getHashPage(){
+      const m=location.hash.match(/page=(\d+)/);
+      if(m){ const p=parseInt(m[1],10); if(p>=1&&p<=CFG.total) return p-1; }
+      return 0;
+    }
+    function updateHash(idx){ history.replaceState(null,'','#page='+(idx+1)); }
+
+    /* ========== TAP-ZONE NAV ========== */
     function goNext(){ unlockAudio(); if(pf) pf.flipNext('top'); }
     function goPrev(){ unlockAudio(); if(pf) pf.flipPrev('top'); }
     function bindZone(el, fn){
@@ -163,16 +212,55 @@
     bindZone(document.getElementById('tzLeft'),  goPrev);
     bindZone(document.getElementById('tzRight'), goNext);
     addEventListener('keydown', e=>{ if(zoomOpen){ if(e.key==='Escape') closeZoom(); return; }
+      if(jumpOpen){ if(e.key==='Escape') closeJump(); return; }
       if(e.key==='ArrowRight') goNext(); if(e.key==='ArrowLeft') goPrev(); });
 
-    /* ================= ZOOM READER (focal pinch + pan, GPU/rAF) ================= */
+    /* ========== PAGE JUMP MODAL ========== */
+    const jumpModal = document.getElementById('jumpModal');
+    const jumpGrid  = document.getElementById('jumpGrid');
+    let jumpOpen = false;
+
+    (function buildJumpGrid(){
+      for(let i=1;i<=CFG.total;i++){
+        const btn=document.createElement('button');
+        btn.className='jump-page';
+        btn.textContent=i;
+        btn.addEventListener('click',()=>{ if(pf){ pf.turnToPage(i-1); updateCounter(i-1); updateHash(i-1); } closeJump(); });
+        jumpGrid.appendChild(btn);
+      }
+    })();
+    function openJump(){
+      jumpOpen=true; jumpModal.classList.add('open');
+      const cur=pf?pf.getCurrentPageIndex()+1:1;
+      jumpGrid.querySelectorAll('.jump-page').forEach(b=>{ b.classList.toggle('active', parseInt(b.textContent)===cur); });
+    }
+    function closeJump(){ jumpOpen=false; jumpModal.classList.remove('open'); }
+    counter.addEventListener('click', openJump);
+    document.getElementById('jumpClose').addEventListener('click', closeJump);
+    jumpModal.addEventListener('click', e=>{ if(e.target===jumpModal) closeJump(); });
+
+    /* ========== FULLSCREEN ========== */
+    const fsBtn = document.getElementById('fullscreenBtn');
+    function toggleFullscreen(){
+      if(!document.fullscreenElement && !document.webkitFullscreenElement){
+        const el=document.documentElement;
+        (el.requestFullscreen||el.webkitRequestFullscreen).call(el);
+      } else {
+        (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+      }
+    }
+    fsBtn.addEventListener('click', toggleFullscreen);
+    function onFsChange(){ fsBtn.textContent = (document.fullscreenElement||document.webkitFullscreenElement) ? '⊠' : '⛶'; }
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+
+    /* ========== ZOOM READER (focal pinch + pan, GPU/rAF) ========== */
     const zEl=document.getElementById('zoom'), zImg=document.getElementById('zoomImg'), zTip=document.getElementById('zoomTip');
     let zoomOpen=false;
-    let scale=1, tx=0, ty=0;          // transform state, origin = image top-left
-    let baseW=0, baseH=0;             // fitted page size at scale 1 (cached — no layout reads)
-    const MIN=1, MAX=6;
+    let scale=1, tx=0, ty=0;
+    let baseW=0, baseH=0;
     const ptrs=new Map();
-    let pinchD0=0, pinchS0=1, ancX=0, ancY=0;   // pinch anchor in image space
+    let pinchD0=0, pinchS0=1, ancX=0, ancY=0;
     let tapT=0, tapX=0, tapY=0;
 
     let dirty=false;
@@ -189,8 +277,8 @@
       baseW=nw*r; baseH=nh*r;
       zImg.style.width=baseW+'px'; zImg.style.height=baseH+'px';
     }
-    function zoomTo(s, fx, fy, anim){          // focal zoom: keep point (fx,fy) under the finger
-      s=Math.max(MIN,Math.min(MAX,s));
+    function zoomTo(s, fx, fy, anim){
+      s=Math.max(CFG.minZoom,Math.min(CFG.maxZoom,s));
       const ix=(fx-tx)/scale, iy=(fy-ty)/scale;
       scale=s; tx=fx-ix*scale; ty=fy-iy*scale; clamp();
       zImg.style.transition = anim ? 'transform .2s ease-out' : 'none';
@@ -222,11 +310,11 @@
     zEl.addEventListener('pointermove', e=>{
       const p=ptrs.get(e.pointerId); if(!p) return;
       const ox=p.x, oy=p.y; p.x=e.clientX; p.y=e.clientY;
-      if(ptrs.size>=2){                                  // focal pinch (+ pan with midpoint)
+      if(ptrs.size>=2){
         const m=midOf();
-        scale=Math.max(MIN,Math.min(MAX, pinchS0*m.d/pinchD0));
+        scale=Math.max(CFG.minZoom,Math.min(CFG.maxZoom, pinchS0*m.d/pinchD0));
         tx=m.x-ancX*scale; ty=m.y-ancY*scale; clamp(); schedule();
-      } else if(scale>1){                                // one-finger pan
+      } else if(scale>1){
         tx+=e.clientX-ox; ty+=e.clientY-oy; clamp(); schedule();
       }
     });
@@ -236,7 +324,7 @@
       const isDouble = Math.hypot(e.clientX-tapX, e.clientY-tapY)<24 && t-tapT<300;
       if(isDouble){ zoomTo(scale>1.2 ? 1 : 2.8, e.clientX, e.clientY, true); tapT=0; }
       else { tapT=t; tapX=e.clientX; tapY=e.clientY; }
-      if(ptrs.size===0 && scale<=1.02) closeZoom();      // pinched back to fit → exit
+      if(ptrs.size===0 && scale<=1.02) closeZoom();
     });
     zEl.addEventListener('pointercancel', e=>ptrs.delete(e.pointerId));
     zEl.addEventListener('wheel', e=>{ e.preventDefault();
@@ -253,7 +341,7 @@
     stage.addEventListener('touchend',   ()=>{ pinchArm=false; }, {passive:true});
     addEventListener('resize', ()=>{ if(zoomOpen){ setFit(); clamp(); zImg.style.transition='none'; schedule(); } });
 
-    /* ---------- responsive ---------- */
+    /* ========== RESPONSIVE RESIZE ========== */
     let lastW=innerWidth,lastH=innerHeight,rT;
     addEventListener('resize', ()=>{
       if(Math.abs(innerWidth-lastW)<40&&Math.abs(innerHeight-lastH)<40) return;
@@ -261,15 +349,22 @@
       clearTimeout(rT); rT=setTimeout(()=>{ const c=pf.getCurrentPageIndex(); pf.destroy(); buildFlip(c); },220);
     });
 
-    /* ---------- boot ---------- */
+    /* ========== HINT (tap to dismiss) ========== */
+    const hintEl=document.getElementById('hint');
+    function dismissHint(){ hintEl.style.opacity='0'; setTimeout(()=>hintEl.remove(),800); }
+    hintEl.addEventListener('click', dismissHint);
+
+    /* ========== BOOT ========== */
     makePages(); buildPool();
+    const startPage = getHashPage();
     const cover=new Image();
     cover.onload=()=>{
-      buildFlip(0);
+      buildFlip(startPage);
+      updateHash(startPage);
       document.getElementById('loader').style.display='none';
       document.querySelectorAll('.tapzone').forEach(z=>z.classList.add('peek'));
       setTimeout(()=>document.querySelectorAll('.tapzone').forEach(z=>z.classList.remove('peek')),2600);
-      setTimeout(()=>{ const h=document.getElementById('hint'); h.style.opacity='0'; setTimeout(()=>h.remove(),800); },5200);
+      setTimeout(dismissHint, 8000);
     };
     cover.onerror=()=>{ document.getElementById('loader').innerHTML='<span>Error al cargar</span>'; };
     cover.src='pages/page-01.jpg';
