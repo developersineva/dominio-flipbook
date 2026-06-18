@@ -54,8 +54,8 @@
   #zoom{ position:fixed; inset:0; z-index:40; display:none; place-items:center; overflow:hidden;
     background:rgba(5,10,7,.97); touch-action:none; }
   #zoom.open{ display:grid; }
-  #zoomImg{ max-width:100vw; max-height:100vh; transform-origin:center center; will-change:transform;
-    user-select:none; -webkit-user-drag:none; }
+  #zoomImg{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform;
+    user-select:none; -webkit-user-drag:none; -webkit-touch-callout:none; }
   #zoomClose{ position:fixed; top:calc(env(safe-area-inset-top,0) + 12px); right:14px; z-index:42;
     width:44px; height:44px; border-radius:50%; border:1px solid rgba(201,164,76,.4);
     background:rgba(8,17,12,.7); color:#eee; font-size:20px; cursor:pointer; display:grid; place-items:center; }
@@ -165,68 +165,100 @@
     addEventListener('keydown', e=>{ if(zoomOpen){ if(e.key==='Escape') closeZoom(); return; }
       if(e.key==='ArrowRight') goNext(); if(e.key==='ArrowLeft') goPrev(); });
 
-    /* ================= ZOOM READER ================= */
+    /* ================= ZOOM READER (focal pinch + pan, GPU/rAF) ================= */
     const zEl=document.getElementById('zoom'), zImg=document.getElementById('zoomImg'), zTip=document.getElementById('zoomTip');
-    let zoomOpen=false, scale=1, tx=0, ty=0;
-    const ptrs=new Map(); let baseDist=0, baseScale=1, lastTap=0;
+    let zoomOpen=false;
+    let scale=1, tx=0, ty=0;          // transform state, origin = image top-left
+    let baseW=0, baseH=0;             // fitted page size at scale 1 (cached — no layout reads)
+    const MIN=1, MAX=6;
+    const ptrs=new Map();
+    let pinchD0=0, pinchS0=1, ancX=0, ancY=0;   // pinch anchor in image space
+    let tapT=0, tapX=0, tapY=0;
 
-    function clampPan(){
-      const dw=zImg.clientWidth*scale, dh=zImg.clientHeight*scale;
-      const mx=Math.max(0,(dw-innerWidth)/2), my=Math.max(0,(dh-innerHeight)/2);
-      tx=Math.max(-mx,Math.min(mx,tx)); ty=Math.max(-my,Math.min(my,ty));
+    let dirty=false;
+    function schedule(){ if(!dirty){ dirty=true; requestAnimationFrame(()=>{ dirty=false;
+      zImg.style.transform=`translate3d(${tx}px,${ty}px,0) scale(${scale})`; }); } }
+    function clamp(){
+      const cw=baseW*scale, ch=baseH*scale;
+      tx = cw<=innerWidth  ? (innerWidth-cw)/2  : Math.max(innerWidth-cw,  Math.min(0, tx));
+      ty = ch<=innerHeight ? (innerHeight-ch)/2 : Math.max(innerHeight-ch, Math.min(0, ty));
     }
-    function applyT(){ clampPan(); zImg.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`; }
-
+    function setFit(){
+      const nw=zImg.naturalWidth||2204, nh=zImg.naturalHeight||2852;
+      const r=Math.min(innerWidth/nw, innerHeight/nh);
+      baseW=nw*r; baseH=nh*r;
+      zImg.style.width=baseW+'px'; zImg.style.height=baseH+'px';
+    }
+    function zoomTo(s, fx, fy, anim){          // focal zoom: keep point (fx,fy) under the finger
+      s=Math.max(MIN,Math.min(MAX,s));
+      const ix=(fx-tx)/scale, iy=(fy-ty)/scale;
+      scale=s; tx=fx-ix*scale; ty=fy-iy*scale; clamp();
+      zImg.style.transition = anim ? 'transform .2s ease-out' : 'none';
+      schedule();
+    }
     function openZoom(idx, s){
       const n=String(idx+1).padStart(2,'0');
-      zImg.src=`pages-hd/page-${n}.jpg`;
-      scale=s||1.8; tx=0; ty=0; applyT();
       zoomOpen=true; zEl.classList.add('open');
-      zTip.style.opacity='1'; setTimeout(()=>{ zTip.style.opacity='0'; }, 2600);
+      const im=new Image();
+      im.onload=()=>{
+        zImg.src=im.src; setFit();
+        scale=1; clamp(); zImg.style.transition='none'; schedule();
+        requestAnimationFrame(()=>zoomTo(s||2.0, innerWidth/2, innerHeight/2, true));
+        zTip.style.opacity='1'; setTimeout(()=>zTip.style.opacity='0',2400);
+      };
+      im.src=`pages-hd/page-${n}.jpg`;
     }
     function closeZoom(){ zoomOpen=false; zEl.classList.remove('open'); ptrs.clear(); }
 
+    function midOf(){ const v=[...ptrs.values()];
+      return {x:(v[0].x+v[1].x)/2, y:(v[0].y+v[1].y)/2, d:Math.hypot(v[0].x-v[1].x, v[0].y-v[1].y)}; }
+
     zEl.addEventListener('pointerdown', e=>{
       zEl.setPointerCapture(e.pointerId);
+      zImg.style.transition='none';
       ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      if(ptrs.size===2){ const v=[...ptrs.values()]; baseDist=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y); baseScale=scale; }
+      if(ptrs.size===2){ const m=midOf(); pinchD0=m.d; pinchS0=scale; ancX=(m.x-tx)/scale; ancY=(m.y-ty)/scale; }
     });
     zEl.addEventListener('pointermove', e=>{
-      if(!ptrs.has(e.pointerId)) return;
-      const prev=ptrs.get(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      if(ptrs.size===1 && scale>1){ tx+=e.clientX-prev.x; ty+=e.clientY-prev.y; applyT(); }
-      else if(ptrs.size===2){ const v=[...ptrs.values()]; const d=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y);
-        scale=Math.min(5,Math.max(1, baseScale*d/baseDist)); applyT(); }
+      const p=ptrs.get(e.pointerId); if(!p) return;
+      const ox=p.x, oy=p.y; p.x=e.clientX; p.y=e.clientY;
+      if(ptrs.size>=2){                                  // focal pinch (+ pan with midpoint)
+        const m=midOf();
+        scale=Math.max(MIN,Math.min(MAX, pinchS0*m.d/pinchD0));
+        tx=m.x-ancX*scale; ty=m.y-ancY*scale; clamp(); schedule();
+      } else if(scale>1){                                // one-finger pan
+        tx+=e.clientX-ox; ty+=e.clientY-oy; clamp(); schedule();
+      }
     });
-    function zUp(e){
+    zEl.addEventListener('pointerup', e=>{
       ptrs.delete(e.pointerId);
-      // double-tap toggle
-      const now=e.timeStamp;
-      if(now-lastTap<300){ scale = scale>1.2 ? 1 : 2.8; tx=0; ty=0; applyT(); lastTap=0; }
-      else lastTap=now;
-      if(ptrs.size===0 && scale<=1.02) closeZoom();   // pinched back to fit
-    }
-    zEl.addEventListener('pointerup', zUp);
-    zEl.addEventListener('pointercancel', e=>{ ptrs.delete(e.pointerId); });
+      const t=e.timeStamp;
+      const isDouble = Math.hypot(e.clientX-tapX, e.clientY-tapY)<24 && t-tapT<300;
+      if(isDouble){ zoomTo(scale>1.2 ? 1 : 2.8, e.clientX, e.clientY, true); tapT=0; }
+      else { tapT=t; tapX=e.clientX; tapY=e.clientY; }
+      if(ptrs.size===0 && scale<=1.02) closeZoom();      // pinched back to fit → exit
+    });
+    zEl.addEventListener('pointercancel', e=>ptrs.delete(e.pointerId));
     zEl.addEventListener('wheel', e=>{ e.preventDefault();
-      scale=Math.min(5,Math.max(1, scale*(e.deltaY<0?1.12:0.9))); if(scale<=1){tx=0;ty=0;} applyT(); }, {passive:false});
+      zoomTo(scale*(e.deltaY<0?1.15:0.87), e.clientX, e.clientY, false); }, {passive:false});
+
     document.getElementById('zoomClose').addEventListener('click', closeZoom);
-    document.getElementById('zoomBtn').addEventListener('click', ()=>{ if(pf) openZoom(pf.getCurrentPageIndex(), 2.0); });
+    document.getElementById('zoomBtn').addEventListener('click', ()=>{ if(pf) openZoom(pf.getCurrentPageIndex(), 2.2); });
 
     // pinch-out on the book opens the reader
-    let pinchArm=false, pinchD0=0;
+    let pinchArm=false, pinchA0=0;
     function tDist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
-    stage.addEventListener('touchstart', e=>{ if(!zoomOpen && e.touches.length===2){ pinchArm=true; pinchD0=tDist(e.touches); } }, {passive:true});
-    stage.addEventListener('touchmove',  e=>{ if(pinchArm && !zoomOpen && e.touches.length===2){
-      if(tDist(e.touches)/pinchD0>1.1){ pinchArm=false; openZoom(pf.getCurrentPageIndex(), 1.8); } } }, {passive:true});
+    stage.addEventListener('touchstart', e=>{ if(!zoomOpen && e.touches.length===2){ pinchArm=true; pinchA0=tDist(e.touches); } }, {passive:true});
+    stage.addEventListener('touchmove',  e=>{ if(pinchArm && !zoomOpen && e.touches.length===2 && tDist(e.touches)/pinchA0>1.08){ pinchArm=false; openZoom(pf.getCurrentPageIndex(), 1.8); } }, {passive:true});
     stage.addEventListener('touchend',   ()=>{ pinchArm=false; }, {passive:true});
+    addEventListener('resize', ()=>{ if(zoomOpen){ setFit(); clamp(); zImg.style.transition='none'; schedule(); } });
 
     /* ---------- responsive ---------- */
     let lastW=innerWidth,lastH=innerHeight,rT;
     addEventListener('resize', ()=>{
       if(Math.abs(innerWidth-lastW)<40&&Math.abs(innerHeight-lastH)<40) return;
       lastW=innerWidth; lastH=innerHeight;
-      clearTimeout(rT); rT=setTimeout(()=>{ const c=pf.getCurrentPageIndex(); pf.destroy(); buildFlip(c); if(zoomOpen) applyT(); },220);
+      clearTimeout(rT); rT=setTimeout(()=>{ const c=pf.getCurrentPageIndex(); pf.destroy(); buildFlip(c); },220);
     });
 
     /* ---------- boot ---------- */
