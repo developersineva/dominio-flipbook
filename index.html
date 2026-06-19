@@ -250,7 +250,13 @@
       }
     }
     fsBtn.addEventListener('click', toggleFullscreen);
-    function onFsChange(){ fsBtn.textContent = (document.fullscreenElement||document.webkitFullscreenElement) ? '⊠' : '⛶'; }
+    function onFsChange(){
+      fsBtn.textContent = (document.fullscreenElement||document.webkitFullscreenElement) ? '⊠' : '⛶';
+      setTimeout(()=>{
+        lastW=innerWidth; lastH=innerHeight;
+        if(pf){ const c=pf.getCurrentPageIndex(); pf.destroy(); buildFlip(c); }
+      }, 300);
+    }
     document.addEventListener('fullscreenchange', onFsChange);
     document.addEventListener('webkitfullscreenchange', onFsChange);
 
